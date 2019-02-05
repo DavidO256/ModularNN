@@ -37,6 +37,7 @@ class NeuralNetwork:
         self.output_layer.update_error(self.loss(y_predicted, y_true, False)
                                        * self.output_layer.activation(y_predicted, True))
         return np.mean(self.loss(y_predicted, y_true, False))
+    
 
     def save_weights(self, path):
         weights, _ = self.vectorize()
@@ -49,20 +50,3 @@ class NeuralNetwork:
             weights = json.load(file)
             file.close()
         self.update_weights(weights)
-
-
-class NNConfiguration:
-
-    def __init__(self, model):
-        input_name = model.input_layer.name
-        output_name = model.output_layer.name
-        self.config = {'input': input_name,
-                       'output': output_name,
-                       'values': {
-                           input_name: model.input_layer.serialize(),
-                           output_name: model.output_layer.serialize()
-                       },
-                       'loss': model.loss,
-                       'metrics': model.metrics
-                       }
-

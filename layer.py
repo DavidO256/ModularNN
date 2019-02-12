@@ -1,8 +1,12 @@
 import numpy as np
+from multiprocessing import Pool
 import functions.activation
 import functions.pooling
 import functions.loss
 import abc
+
+USE_MULTITHREADING = True
+NUM_THREADS = 8
 
 
 class Layer(abc.ABC):
@@ -56,12 +60,19 @@ class Layer(abc.ABC):
                         weights = layer.update_weights(weights[length:], True)
                 return weights[length:]
 
+    def _calculate_product_sums(self, xi):
+        x, i = xi
+        self.product_sum[i] = self.bias
+        for j in range(self.input_length):
+            self.product_sum[i] += np.reshape(x, self.input_length)[j] * self.weight_value(j, i)
+
     def update_product_sums(self, x):
         self.product_sum = np.empty(self.output_length)
-        for i in range(self.output_length):
-            self.product_sum[i] = self.bias
-            for j in range(self.input_length):
-                self.product_sum[i] += np.reshape(x, self.input_length)[j] * self.weight_value(j, i)
+        if USE_MULTITHREADING:
+            Pool(NUM_THREADS).map(self._calculate_product_sums, [(x, i) for i in range(self.output_length)])
+        else:
+            for i in range(self.output_length):
+                self._calculate_product_sums(x, i)
 
     def forward(self, x):
         self.outputs = np.zeros(self.output_length)
@@ -100,15 +111,22 @@ class Layer(abc.ABC):
             error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
                                  for j in range(layer.output_length)])
 
+    def _calculate_error(self, i):
+        error_sum = 0
+        for layer in self.next:
+            error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
+                                 for j in range(layer.output_length)])
+        self.error[i] = self.activation(self.product_sum[i], True) * error_sum
+
     def update_error(self, error):
         if error is None:
             self.error = np.zeros(self.output_length)
-            for i in range(self.output_length):
-                error_sum = 0
-                for layer in self.next:
-                    error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
-                                         for j in range(layer.output_length)])
-                self.error[i] = self.activation(self.product_sum[i], True) * error_sum
+            if USE_MULTITHREADING:
+                error_pool = Pool(NUM_THREADS)
+                error_pool.map(self._calculate_error, [i for i in range(self.output_length)])
+            else:
+                for i in range(self.output_length):
+                    self._calculate_error(i)
         else:
             self.error = error
 

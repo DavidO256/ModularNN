@@ -34,8 +34,8 @@ class NeuralNetwork:
         if not isinstance(y_true, np.ndarray):
             return self.calculate_gradient(x, np.asarray(y_true))
         y_predicted = self.predict(x)
-        self.output_layer.update_error(self.loss(y_predicted, y_true, False)
-                                       * self.output_layer.activation(y_predicted, True))
+        self.output_layer.update(self.loss(y_predicted, y_true, False)
+                                 * self.output_layer.activation(y_predicted, True))
         return np.mean(self.loss(y_predicted, y_true, False))
     
 

@@ -33,7 +33,7 @@ class Layer(abc.ABC):
         weights = np.empty(0)
         gradients = np.empty(0)
         if not isinstance(self, Input) and not isinstance(self, Pooling):
-            weights = self.weights
+            weights = self.weights.flatten()
             gradients = self.gradient.flatten()
         for layer in self.next:
             if layer is None:
@@ -93,6 +93,12 @@ class Layer(abc.ABC):
             for layer in self.last:
                 if type(layer) != Input:
                     layer.update()
+
+    def _calculate_error(self, i, j):
+        error_sum = 0
+        for layer in self.next:
+            error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
+                                 for j in range(layer.output_length)])
 
     def update_error(self, error):
         if error is None:

@@ -35,10 +35,11 @@ def square_test(epochs, training_length):
         y = total / x.size
         x_train.append(x)
         y_train.append([y])
+    print(model.predict(x_train[0]))
     model.fit(x_train, y_train, epochs)
     model.save_weights("weight_output.json")
 
 
 if __name__ == '__main__':
-    mnist_test(1)
-
+    #mnist_test(1)
+    square_test(5, 250)

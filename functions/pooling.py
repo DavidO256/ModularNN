@@ -8,5 +8,5 @@ def maximum(depth_slice):
             if depth_slice[i][j] > value:
                 value = depth_slice[i][j]
                 index = (i, j)
-    return value, [index]
+    return value, index
 

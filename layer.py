@@ -1,5 +1,6 @@
 import numpy as np
 import functions.activation
+import functions.pooling
 import functions.loss
 import abc
 
@@ -12,8 +13,9 @@ class Layer(abc.ABC):
             self.output_length = output_shape
             self.outputs_shape = (output_shape,)
         else:
-            self.output_length = np.size(output_shape)
+            self.output_length = np.prod(output_shape)
             self.outputs_shape = output_shape
+        self.gradient_shape = None
         self.inputs_shape = None
         self.input_length = None
         self.product_sum = None
@@ -30,7 +32,7 @@ class Layer(abc.ABC):
     def vectorize(self):
         weights = np.empty(0)
         gradients = np.empty(0)
-        if not isinstance(self, Input):
+        if not isinstance(self, Input) and not isinstance(self, Pooling):
             weights = self.weights
             gradients = self.gradient.flatten()
         for layer in self.next:
@@ -55,6 +57,7 @@ class Layer(abc.ABC):
                 return weights[length:]
 
     def update_product_sums(self, x):
+        self.product_sum = np.empty(self.output_length)
         for i in range(self.output_length):
             self.product_sum[i] = self.bias
             for j in range(self.input_length):
@@ -64,8 +67,8 @@ class Layer(abc.ABC):
         self.outputs = np.zeros(self.output_length)
         self.update_product_sums(x)
         self.inputs = x
-        self.outputs = np.asarray([self.activation(self.product_sum[i])
-                                  for i in range(self.output_length)])
+        self.outputs = np.asarray([self.activation(self.product_sum.flatten()[i])
+                                   for i in range(self.output_length)])
         self.compute_next(self.outputs)
 
     def compute_next(self, x):
@@ -83,26 +86,31 @@ class Layer(abc.ABC):
             if layer is not None:
                 layer.print_next()
 
-    def update_error(self, error=None):
-        if error is None:
-            self.error = np.zeros(self.output_length)
-            for i in range(self.output_length):
-                    error_sum = 0
-                    for layer in self.next:
-                        error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
-                                             for j in range(layer.output_length)])
-                    self.error[i] = self.activation(self.product_sum[i], True) * error_sum
-        else:
-            self.error = error
-
-        self.gradient = np.empty(self.weights.shape)
-        for i in range(self.input_length):
-            for j in range(self.output_length):
-                self.gradient_value(i, j, update_value=self.inputs[i] * self.error[j])
+    def update(self, error=None):
+        self.update_error(error)
+        self.update_gradient()
         if self.last is not None:
             for layer in self.last:
                 if type(layer) != Input:
-                    layer.update_error()
+                    layer.update()
+
+    def update_error(self, error):
+        if error is None:
+            self.error = np.zeros(self.output_length)
+            for i in range(self.output_length):
+                error_sum = 0
+                for layer in self.next:
+                    error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
+                                         for j in range(layer.output_length)])
+                self.error[i] = self.activation(self.product_sum[i], True) * error_sum
+        else:
+            self.error = error
+
+    def update_gradient(self):
+        self.gradient = np.empty(self.weights.shape if self.gradient_shape is None else self.gradient_shape)
+        for i in range(self.input_length):
+            for j in range(self.output_length):
+                self.gradient_value(i, j, update_value=self.inputs[i] * self.error[j])
 
     def initialize(self):
         if self.last is not None:
@@ -149,7 +157,6 @@ class Layer(abc.ABC):
     def __str__(self):
         return "%s(%s)" % (self.__class__.__name__, self.name)
 
-    @abc.abstractmethod
     def gradient_value(self, i, j, update_value=None):
         pass
 
@@ -168,9 +175,6 @@ class Input(Layer):
         self.inputs = x
         self.compute_next(x)
 
-    def update_gradient(self, gradient=None):
-        pass
-
     def gradient_value(self, i, j, update_value=None):
         pass
 
@@ -183,10 +187,6 @@ class Intersection(Layer):
     def forward(self, x):
         for n in self.next:
             n.forward(x)
-
-    def update_gradient(self, gradient=None):
-        for l in self.last:
-            l.update_gradient()
 
     def gradient_value(self, i, j, update_value=None):
         value = 0
@@ -208,15 +208,16 @@ class Dense(Layer):
             self.gradient[i][j] = update_value
 
     def weight_value(self, input_index, output_index):
-        return self.weights[input_index][output_index]
+        return self.weights[input_index % self.input_length][output_index % self.output_length]
 
 
 class Filter(Layer):
 
     def __init__(self, inputs_shape, filters, size, stride, padding,
-                 activation=functions.activation.relu):
+                 activation=functions.activation.sigmoid):
         self.output_width = (inputs_shape[0] - size + 2 * padding) // stride + 1
         self.output_height = (inputs_shape[1] - size + 2 * padding) // stride + 1
+        self.output_depth = inputs_shape[2]
         super(Filter, self).__init__((filters, self.output_width, self.output_height),
                                      activation)
         self.inputs_shape = inputs_shape
@@ -224,6 +225,39 @@ class Filter(Layer):
         self.filters = filters
         self.stride = stride
         self.size = size
+
+    def update_gradient(self):
+        self.gradient = np.zeros(self.weights.shape)
+        inputs = np.pad(self.inputs.reshape(self.inputs_shape), self.padding, 'constant', constant_values=0)
+        for f in range(self.filters):
+            for i in range(self.output_width):
+                for j in range(self.output_height):
+                    for k in range(self.output_depth):
+                        i_x = self.stride * (i - 1) + self.size - 2 * self.padding
+                        j_y = self.stride * (j - 1) + self.size - 2 * self.padding
+                        for m in range(self.size):
+                            for n in range(self.size):
+                                self.gradient[f][m][n][k] += inputs[i_x + m - self.size // 2][j_y + n - self.size // 2][k] * self.error[f][i][j][k]
+
+    def update_error(self, error):
+        if error is None:
+            def convert(a, b, c, d): return self.output_depth\
+                                            * (self.output_height * (self.output_width * a + b) + c) + d
+            self.error = np.zeros(shape=(self.filters, self.output_width, self.output_height, self.output_depth))
+
+            for f in range(self.filters):
+                for i in range(self.output_width):
+                    for j in range(self.output_height):
+                        for k in range(self.output_depth):
+                            error_sum = 0
+                            for layer in self.next:
+                                error_sum += np.sum([layer.weight_value(convert(f, i, j, k), o)
+                                                     * layer.error_value(o)
+                                                     for o in range(layer.output_length)])
+                            self.error[f][i][j][k] = error_sum * self.activation(self.product_sum[convert(f, i, j, k)
+                                                                                 % self.product_sum.size], True)
+        else:
+            self.error = np.reshape(error, self.outputs_shape)
 
     def update_product_sums(self, x):
         x = np.pad(x.reshape(self.inputs_shape), self.padding, 'constant', constant_values=0)
@@ -237,33 +271,29 @@ class Filter(Layer):
                         j_y = self.stride * (j - 1) + self.size - 2 * self.padding
                         for m in range(self.size):
                             for n in range(self.size):
-                                result[f][i][j][k] += x[i_x + m - self.size // 2][j_y + n - self.size // 2][k]\
-                                                      * self.weights[f][m][n][k] + self.bias
-            product_sum[f] = np.sum(result[f], axis=2)
+                                result[f][i][j] += x[i_x + m - self.size // 2][j_y + n - self.size // 2][k] \
+                                                   * self.weights[f][m][n][k]
+            product_sum[f] = np.sum(result[f], axis=2) + self.bias
         self.product_sum = product_sum.flatten()
 
-    def update_gradient(self, gradient=None):
-        self.gradient = np.empty(self.weights.size)
-        for i in range(self.input_length):
-            for j in range(self.output_length):
-                self.gradient[i][j] = self.activation(self.outputs[j], True) * self.inputs[i]
-
-    def gradient_value(self, i, j, update_value=None):
-        row = j // self.weights.shape[0]
-        col = j % self.weights.shape[0]
-        if update_value is None:
-            return self.gradient[row][col]
-        else:
-            self.gradient[row][col] = update_value
+    def forward(self, x):
+        self.outputs = np.zeros(self.output_length)
+        self.update_product_sums(x)
+        self.inputs = x
+        self.outputs = np.asarray([self.activation(self.product_sum.flatten()[i])
+                                   for i in range(self.product_sum.size)])
+        self.compute_next(self.outputs)
 
     def weight_value(self, i, j):
-        row = j // self.weights.shape[0]
-        col = j % self.weights.shape[0]
-        return np.sum(self.weights[row][col])
+        return self.weights[:, j // self.size, j % self.size, :]
+
+    def error_value(self, index):
+        return self.error[:, index % self.error.size // self.output_width,
+                          index % self.error.size % self.output_height, :]
 
     def initialize(self):
         super(Filter, self).initialize()
-        self.weights = np.random.uniform(size=(self.filters, self.size, self.size, self.inputs_shape[2]))
+        self.weights = np.random.uniform(size=(self.filters, self.size, self.size, self.output_depth))
 
     def __len__(self):
         return self.weights.size
@@ -271,40 +301,47 @@ class Filter(Layer):
 
 class Pooling(Layer):
 
-    def gradient_value(self, i, j, update_value=None):
-        pass
-
-    def __init__(self, inputs_shape, f, stride, pooling_function):
-        super(Pooling, self).__init__(((inputs_shape[0] - f) / stride + 1)
-                                      * (inputs_shape[1] - f / stride + 1)
-                                      * inputs_shape[2], None)
+    def __init__(self, inputs_shape, size=2, stride=2, pooling_function=functions.pooling.maximum):
+        super(Pooling, self).__init__((((inputs_shape[0] - size) // stride + 1),
+                                       ((inputs_shape[1] - size) // stride + 1),
+                                       inputs_shape[2]), None)
         self.pooling_function = pooling_function
         self.inputs_shape = inputs_shape
         self.stride = stride
         self.indices = None
-        self.size = f
+        self.size = size
 
     def forward(self, x):
-        self.outputs = np.zeros(((self.inputs_shape[0] - self.size) / self.stride + 1,
-                                 (self.inputs_shape[1] - self.size) / self.stride + 1,
-                                 self.inputs_shape[2]))
-        self.error = []
+        self.outputs = np.zeros(self.outputs_shape)
+        self.indices = []
+        x = np.reshape(x, self.inputs_shape)
         for i in range(self.outputs.shape[0]):
             for j in range(self.outputs.shape[1]):
                 for k in range(self.outputs.shape[2]):
                     value, index = self.pooling_function(x[i * self.size:(i + 1) * self.size,
-                                                           j * self.size:(j + 1) * self.size,
-                                                           k])
-                    self.error.append((i * self.size + index[0],
-                                       j * self.size + index[1],
-                                       k, value))
+                                                         j * self.size:(j + 1) * self.size,
+                                                         k])
                     self.outputs[i][j][k] = value
+                    self.indices.append((i * self.size + index[0],
+                                         j * self.size + index[1],
+                                         k))
         self.compute_next(self.outputs)
 
     def update_error(self, error=None):
-        #for i, j, k, value in self.error:
-        pass
-        # call the affected ones via the indices list
+        self.error = np.zeros(self.inputs_shape)
+        for i, j, k, value in self.error:
+            error_sum = 0
+            for layer in self.next:
+                error_sum += np.sum([layer.error_value(j)
+                                     for j in range(layer.output_length)])
+            self.error[i][j][k] = value * error_sum
 
-    def update_gradient(self, gradient=None):
-        pass
+    def initialize(self):
+        for layer in self.last:
+            layer.next.append(self)
+            layer.initialize()
+
+    def gradient_value(self, i, j, update_value=None):
+        if update_value is None:
+            for layer in self.last:
+                layer.gradient_value(i, j, update_value)

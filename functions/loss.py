@@ -12,9 +12,3 @@ def binary_cross_entropy(y_predicted, y_true, differentiate):
     if differentiate:
         return -y_true / y_predicted - (1 - y_true) / (1 - y_predicted)
     return -y_true * np.log(y_predicted) - (1 - y_true) * np.log(1 - y_predicted)
-    #if differentiate:
-    #    return -np.dot(np.transpose(y_true), 1 / y_predicted)\
-    #                  - np.dot(np.transpose(1 - y_true), 1 / (1 - y_predicted))
-    #return -np.dot(np.transpose(y_true), np.log(y_predicted))\
-    #       - np.dot(np.transpose(1 - y_true), np.log(1 - y_predicted))
-

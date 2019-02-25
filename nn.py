@@ -42,7 +42,6 @@ class NeuralNetwork:
         weights, _ = self.vectorize()
         with open(path, 'w') as file:
             np.zeros(3, dtype=np.int8)
-            {}.keys()
             json.dump(weights.tolist(), file, indent=4)
             file.close()
 

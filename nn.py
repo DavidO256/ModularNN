@@ -41,7 +41,6 @@ class NeuralNetwork:
     def save_weights(self, path):
         weights, _ = self.vectorize()
         with open(path, 'w') as file:
-            np.zeros(3, dtype=np.int8)
             json.dump(weights.tolist(), file, indent=4)
             file.close()
 

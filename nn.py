@@ -36,12 +36,13 @@ class NeuralNetwork:
         y_predicted = self.predict(x)
         self.output_layer.update(self.loss(y_predicted, y_true, False)
                                  * self.output_layer.activation(y_predicted, True))
-        return np.mean(self.loss(y_predicted, y_true, False))
-    
+        return self.loss(y_predicted, y_true, False)
 
     def save_weights(self, path):
         weights, _ = self.vectorize()
         with open(path, 'w') as file:
+            np.zeros(3, dtype=np.int8)
+            {}.keys()
             json.dump(weights.tolist(), file, indent=4)
             file.close()
 
@@ -50,3 +51,6 @@ class NeuralNetwork:
             weights = json.load(file)
             file.close()
         self.update_weights(weights)
+
+    def reset(self):
+        self.input_layer.reset()

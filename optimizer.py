@@ -20,6 +20,7 @@ class Optimizer(abc.ABC):
                     progress.update(1)
                 progress.close()
                 self.optimization_end()
+        neural_network.reset()
 
     @abc.abstractmethod
     def optimization_iteration(self, neural_network, x_batch, y_batch, iteration):
@@ -40,9 +41,8 @@ class SGD(Optimizer):
     def optimization_iteration(self, neural_network, x_batch, y_batch, iteration):
         output_loss = neural_network.calculate_gradient(x_batch, y_batch)
         weights, gradient = neural_network.vectorize()
-        weights -= self.learning_rate * gradient
-        neural_network.update_weights(weights)
-        return {'loss': output_loss}
+        neural_network.update_weights(weights - self.learning_rate * gradient)
+        return {'loss': np.sum(output_loss)}
 
 
 class Adam(Optimizer):
@@ -67,7 +67,7 @@ class Adam(Optimizer):
         self.past_m = m
         self.past_v = v
         neural_network.update_weights(weights)
-        return {'loss': output_loss}
+        return {'loss': np.sum(output_loss)}
 
     def optimization_end(self):
         self.past_m = 0

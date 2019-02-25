@@ -1,12 +1,8 @@
 import numpy as np
-from multiprocessing import Pool
 import functions.activation
 import functions.pooling
 import functions.loss
 import abc
-
-USE_MULTITHREADING = True
-NUM_THREADS = 8
 
 
 class Layer(abc.ABC):
@@ -34,11 +30,8 @@ class Layer(abc.ABC):
         self.next = []
 
     def vectorize(self):
-        weights = np.empty(0)
-        gradients = np.empty(0)
-        if not isinstance(self, Input) and not isinstance(self, Pooling):
-            weights = self.weights.flatten()
-            gradients = self.gradient.flatten()
+        weights = self.weights.flatten() if self.weights is not None else np.zeros(0)
+        gradients = self.gradient.flatten() if self.gradient is not None else np.zeros(0)
         for layer in self.next:
             if layer is None:
                 continue
@@ -48,31 +41,22 @@ class Layer(abc.ABC):
         return weights, gradients
 
     def update_weights(self, weights, update_next):
-        if isinstance(self, Input):
-            for layer in self.next:
-                weights = layer.update_weights(weights, True)
-        else:
+        if self.weights is not None:
             length = len(self)
             self.weights = weights[:length].reshape(self.weights.shape)
-            if update_next:
-                for layer in self.next:
-                    if layer is not None:
-                        weights = layer.update_weights(weights[length:], True)
-                return weights[length:]
-
-    def _calculate_product_sums(self, xi):
-        x, i = xi
-        self.product_sum[i] = self.bias
-        for j in range(self.input_length):
-            self.product_sum[i] += np.reshape(x, self.input_length)[j] * self.weight_value(j, i)
+            weights = weights[length:]
+        if update_next:
+            for layer in self.next:
+                if layer is not None:
+                    weights = layer.update_weights(weights, True)
+            return weights
 
     def update_product_sums(self, x):
         self.product_sum = np.empty(self.output_length)
-        if USE_MULTITHREADING:
-            Pool(NUM_THREADS).map(self._calculate_product_sums, [(x, i) for i in range(self.output_length)])
-        else:
-            for i in range(self.output_length):
-                self._calculate_product_sums(x, i)
+        for i in range(self.output_length):
+            self.product_sum[i] = 0
+            for j in range(self.input_length):
+                self.product_sum[i] += np.reshape(x, self.input_length)[j] * self.weight_value(j, i)
 
     def forward(self, x):
         self.outputs = np.zeros(self.output_length)
@@ -87,48 +71,26 @@ class Layer(abc.ABC):
             if layer is not None:
                 layer.forward(x)
 
-    def print_next(self):
-        if isinstance(self, Input):
-            print("%0.3f ---> %0.3f\t(Input)" % (self.inputs[1], self.outputs[1]))
-        else:
-            print(type(self))
-            print("%0.3f ---> %0.3f\t(%0.3f)" % (self.inputs[1], self.outputs[1], self.product_sum[1]))
-        for layer in self.next:
-            if layer is not None:
-                layer.print_next()
-
     def update(self, error=None):
-        self.update_error(error)
-        self.update_gradient()
+        if self.weights is not None:
+            self.update_error(error)
+            self.update_gradient()
         if self.last is not None:
             for layer in self.last:
-                if type(layer) != Input:
-                    layer.update()
-
-    def _calculate_error(self, i, j):
-        error_sum = 0
-        for layer in self.next:
-            error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
-                                 for j in range(layer.output_length)])
-
-    def _calculate_error(self, i):
-        error_sum = 0
-        for layer in self.next:
-            error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
-                                 for j in range(layer.output_length)])
-        self.error[i] = self.activation(self.product_sum[i], True) * error_sum
+                layer.update()
 
     def update_error(self, error):
         if error is None:
             self.error = np.zeros(self.output_length)
-            if USE_MULTITHREADING:
-                error_pool = Pool(NUM_THREADS)
-                error_pool.map(self._calculate_error, [i for i in range(self.output_length)])
-            else:
-                for i in range(self.output_length):
-                    self._calculate_error(i)
+            for i in range(self.output_length):
+                error_sum = 0
+                for layer in self.next:
+                    error_sum += np.sum([layer.weight_value(i, j) * layer.error_value(j)
+                                         for j in range(layer.output_length)])
+                self.error[i] = self.activation(self.product_sum[i], True) * error_sum
         else:
-            self.error = error
+            self.error = [error[i] * self.activation(self.product_sum[i], True)
+                          for i in range(self.output_length)]
 
     def update_gradient(self):
         self.gradient = np.empty(self.weights.shape if self.gradient_shape is None else self.gradient_shape)
@@ -176,7 +138,7 @@ class Layer(abc.ABC):
         return config
 
     def __len__(self):
-        return self.input_length * self.output_length
+        return self.weights.size
 
     def __str__(self):
         return "%s(%s)" % (self.__class__.__name__, self.name)
@@ -199,9 +161,6 @@ class Input(Layer):
         self.inputs = x
         self.compute_next(x)
 
-    def gradient_value(self, i, j, update_value=None):
-        pass
-
 
 class Intersection(Layer):
 
@@ -221,7 +180,7 @@ class Intersection(Layer):
 
 class Dense(Layer):
 
-    def __init__(self, output_shape, activation=functions.activation.sigmoid, bias=0):
+    def __init__(self, output_shape, activation=functions.activation.relu, bias=0):
         super(Dense, self).__init__(output_shape, activation, bias)
         self.input_length = None
 
@@ -238,7 +197,7 @@ class Dense(Layer):
 class Filter(Layer):
 
     def __init__(self, inputs_shape, filters, size, stride, padding,
-                 activation=functions.activation.sigmoid):
+                 activation=functions.activation.relu):
         self.output_width = (inputs_shape[0] - size + 2 * padding) // stride + 1
         self.output_height = (inputs_shape[1] - size + 2 * padding) // stride + 1
         self.output_depth = inputs_shape[2]

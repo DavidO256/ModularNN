@@ -1,11 +1,16 @@
+import multiprocessing
 import numpy as np
 import tqdm
 import abc
 
+NUM_THREADS = 4
+USE_MULTITHREADING = True
+
 
 class Optimizer(abc.ABC):
 
-    def optimize(self, neural_network, epochs, x, y):
+    def optimize(self, neural_network, epochs, batch_size, x, y):
+        pool = multiprocessing.Pool(NUM_THREADS) if USE_MULTITHREADING else None
         for epoch in range(epochs):
             description = "Epoch" + " " * (1 + len(str(epochs)) - len(str(epoch + 1)))\
                           + "%d/%d" % (epoch + 1, epochs)
@@ -15,16 +20,21 @@ class Optimizer(abc.ABC):
                 for sample in range(len(x)):
                     sample_results = self.optimization_iteration(neural_network,
                                                                  x[sample], y[sample],
-                                                                 sample)
+                                                                 sample, pool)
                     progress.set_postfix(sample_results)
                     progress.update(1)
                 progress.close()
                 self.optimization_end()
-        neural_network.reset()
+        if pool is not None:
+            pool.close()
 
     @abc.abstractmethod
-    def optimization_iteration(self, neural_network, x_batch, y_batch, iteration):
+    def optimization_iteration(self, neural_network, x_batch, y_batch, iteration, pool):
         pass
+
+    def serialize(self):
+        return {'name': self.__class__.__name__,
+                'data': self.__dict__}
 
     def optimization_start(self):
         pass
@@ -38,7 +48,7 @@ class SGD(Optimizer):
     def __init__(self, learning_rate=0.001):
         self.learning_rate = learning_rate
 
-    def optimization_iteration(self, neural_network, x_batch, y_batch, iteration):
+    def optimization_iteration(self, neural_network, x_batch, y_batch, iteration, pool):
         output_loss = neural_network.calculate_gradient(x_batch, y_batch)
         weights, gradient = neural_network.vectorize()
         neural_network.update_weights(weights - self.learning_rate * gradient)
@@ -56,8 +66,8 @@ class Adam(Optimizer):
         self.past_m = 0
         self.past_v = 0
 
-    def optimization_iteration(self, neural_network, x_batch, y_batch, iteration):
-        output_loss = neural_network.calculate_gradient(x_batch, y_batch)
+    def optimization_iteration(self, neural_network, x_batch, y_batch, iteration, pool):
+        output_loss = neural_network.calculate_gradient(x_batch, y_batch, pool)
         weights, gradient = neural_network.vectorize()
         m = self.beta_1 * self.past_m + (1 - self.beta_1) * gradient
         v = self.beta_2 * self.past_v + (1 - self.beta_2) * np.square(gradient)
@@ -69,6 +79,3 @@ class Adam(Optimizer):
         neural_network.update_weights(weights)
         return {'loss': np.sum(output_loss)}
 
-    def optimization_end(self):
-        self.past_m = 0
-        self.past_v = 0

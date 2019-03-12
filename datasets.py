@@ -1,10 +1,10 @@
 import numpy as np
 
 
-def load_mnist():
+def load_mnist(amount=10000):
     x_train, y_train = read_mnist_data("C:/Users/David/PycharmProjects/ModularNN/datasets/train-images.idx3-ubyte",
                                        "C:/Users/David/PycharmProjects/ModularNN/datasets/train-labels.idx1-ubyte",
-                                       1000)
+                                       amount)
     return x_train, y_train
 
 

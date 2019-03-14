@@ -283,19 +283,16 @@ class Filter(Layer):
     def update_product_sums(self, x, pool=None):
         x = np.pad(x.reshape(self.inputs_shape), ((self.padding,), (self.padding,), (0,)), 'constant', constant_values=0)
         result = np.zeros(shape=(self.filters, self.output_width, self.output_height, self.inputs_shape[2]))
-        product_sum = np.zeros(shape=(self.filters, self.output_width, self.output_height))
-        for f in range(self.filters):
-            for i in range(result.shape[1]):
-                for j in range(result.shape[2]):
-                    for k in range(result.shape[3]):
-                        i_x = self.stride * (i - 1) + self.size - 2 * self.padding
-                        j_y = self.stride * (j - 1) + self.size - 2 * self.padding
-                        for m in range(self.size):
-                            for n in range(self.size):
-                                result[f][i][j][k] += x[i_x + m - self.size // 2][j_y + n - self.size // 2][k] * \
-                                                      self.weights[f][m][n][k]
-            product_sum[f] = np.sum(result[f], axis=2) + self.bias
-        self.product_sum = product_sum.transpose()
+        for i in range(result.shape[1]):
+            for j in range(result.shape[2]):
+                for k in range(result.shape[3]):
+                    i_x = self.stride * (i - 1) + self.size - 2 * self.padding
+                    j_y = self.stride * (j - 1) + self.size - 2 * self.padding
+                    for m in range(self.size):
+                        for n in range(self.size):
+                            result[:, i, j, :] += x[i_x + m - self.size // 2][j_y + n - self.size // 2] * \
+                                                      self.weights[:, m, n, :]
+        self.product_sum = np.transpose(np.sum(result, axis=3) + self.bias)
 
     def forward(self, x):
         self.outputs = np.zeros(self.output_length)

@@ -47,9 +47,8 @@ class NeuralNetwork:
         if not isinstance(y_true, np.ndarray):
             return self.calculate_gradient(x, np.asarray(y_true))
         y_predicted = self.predict(x)
-        self.output_layer.update(self.loss(y_predicted, y_true, False)
-                                 * self.output_layer.activation(y_predicted, True), pool)
-        return self.loss(y_predicted, y_true, False)
+        self.output_layer.update(self.loss(self.output_layer, y_true, False), pool)
+        return self.loss(self.output_layer, y_true, False)
 
     def save_weights(self, path):
         weights, _ = self.vectorize()

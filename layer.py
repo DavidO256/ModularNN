@@ -52,13 +52,9 @@ class Layer(abc.ABC):
                     weights = layer.update_weights(weights, True)
             return weights
 
+    @abc.abstractmethod
     def update_product_sums(self, x, pool=None):
-        self.product_sum = np.empty(self.output_length)
-        inputs = np.reshape(x, self.input_length)
-        for i in range(self.output_length):
-            self.product_sum[i] = 0
-            for j in range(self.input_length):
-                self.product_sum[i] += inputs[j] * self.weight_value(j, i)
+        pass
 
     def forward(self, x):
         self.outputs = np.zeros(self.output_length)
@@ -183,7 +179,32 @@ class Layer(abc.ABC):
         pass
 
 
-class Input(Layer):
+class Dense(Layer):
+
+    def __init__(self, output_shape, activation=functions.activation.relu, bias=0):
+        super(Dense, self).__init__(output_shape, activation, bias)
+        self.input_length = None
+
+    def gradient_value(self, i, j, update_value=None):
+        if update_value is None:
+            return self.gradient[i][j]
+        else:
+            self.gradient[i][j] = update_value
+
+    def update_product_sums(self, x, pool=None):
+        self.product_sum = np.empty(self.output_length)
+        inputs = np.reshape(x, self.input_length)
+        self.product_sum = np.sum(inputs * self.weights.T, axis=1)
+
+    def initialize(self):
+        super(Dense, self).initialize()
+        self.inputs_shape = (int(self.input_length),)
+
+    def weight_value(self, input_index, output_index):
+        return self.weights[input_index % self.input_length][output_index % self.output_length]
+
+
+class Input(Dense):
 
     def __init__(self, output_shape):
         super(Input, self).__init__(output_shape, None)
@@ -198,7 +219,7 @@ class Input(Layer):
         self.compute_next(x)
 
 
-class Intersection(Layer):
+class Intersection(Dense):
 
     def __len__(self):
         pass
@@ -212,26 +233,6 @@ class Intersection(Layer):
         for n in self.next:
             value += n.gradient_value(i, j)
         return value
-
-
-class Dense(Layer):
-
-    def __init__(self, output_shape, activation=functions.activation.relu, bias=0):
-        super(Dense, self).__init__(output_shape, activation, bias)
-        self.input_length = None
-
-    def gradient_value(self, i, j, update_value=None):
-        if update_value is None:
-            return self.gradient[i][j]
-        else:
-            self.gradient[i][j] = update_value
-
-    def initialize(self):
-        super(Dense, self).initialize()
-        self.inputs_shape = (int(self.input_length),)
-
-    def weight_value(self, input_index, output_index):
-        return self.weights[input_index % self.input_length][output_index % self.output_length]
 
 
 class Filter(Layer):

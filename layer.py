@@ -91,7 +91,8 @@ class Layer(abc.ABC):
                 for i in range(self.output_length):
                     self._calculate_error(i, output_activation)
             else:
-                pool.starmap(self._calculate_error, zip(range(self.output_length), itertools.repeat(output_activation)))
+                pool.starmap(self._calculate_error, zip(range(self.output_length),
+                                                        itertools.repeat(output_activation)))
         else:
             self.error = [error[i] * output_activation[i]
                           for i in range(self.output_length)]
@@ -217,22 +218,6 @@ class Input(Dense):
         self.outputs = x
         self.inputs = x
         self.compute_next(x)
-
-
-class Intersection(Dense):
-
-    def __len__(self):
-        pass
-
-    def forward(self, x):
-        for n in self.next:
-            n.forward(x)
-
-    def gradient_value(self, i, j, update_value=None):
-        value = 0
-        for n in self.next:
-            value += n.gradient_value(i, j)
-        return value
 
 
 class Filter(Layer):

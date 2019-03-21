@@ -9,22 +9,23 @@ USE_MULTITHREADING = True
 
 class Optimizer(abc.ABC):
 
-    def optimize(self, neural_network, epochs, batch_size, x, y):
+    def optimize(self, neural_network, x, y, epochs, batch_size, validation=None):
         pool = multiprocessing.Pool(NUM_THREADS) if USE_MULTITHREADING else None
         for epoch in range(epochs):
             description = "Epoch" + " " * (1 + len(str(epochs)) - len(str(epoch + 1)))\
                           + "%d/%d" % (epoch + 1, epochs)
-            with tqdm.tqdm(total=len(x), unit='sample',
+            with tqdm.tqdm(total=len(x) // batch_size, unit='batch',
                            desc=description) as progress:
                 self.optimization_start()
-                for sample in range(len(x)):
-                    sample_results = self.optimization_iteration(neural_network,
-                                                                 x[sample], y[sample],
-                                                                 sample, pool)
-                    progress.set_postfix(sample_results)
+                for batch in range(len(x) // batch_size):
+                    batch_loss = self.optimization_iteration(neural_network,
+                                                             x[batch_size * batch:batch_size * (1 + batch)],
+                                                             y[batch_size * batch:batch_size * (1 + batch)],
+                                                             batch, pool)
+                    progress.set_postfix({'loss': batch_loss})
                     progress.update(1)
-                progress.close()
                 self.optimization_end()
+                progress.close()
         if pool is not None:
             pool.close()
 
@@ -52,7 +53,7 @@ class SGD(Optimizer):
         output_loss = neural_network.calculate_gradient(x_batch, y_batch)
         weights, gradient = neural_network.vectorize()
         neural_network.update_weights(weights - self.learning_rate * gradient)
-        return {'loss': np.sum(output_loss)}
+        return np.sum(output_loss)
 
 
 class Adam(Optimizer):
@@ -77,5 +78,5 @@ class Adam(Optimizer):
         self.past_m = m
         self.past_v = v
         neural_network.update_weights(weights)
-        return {'loss': np.sum(output_loss)}
+        return np.sum(output_loss)
 

@@ -7,7 +7,7 @@ def get_function(name):
 
 
 def predictions(output_layer, clip=False):
-    y_prime_predicted = output_layer.activation(output_layer.product_sums, True)
+    y_prime_predicted = output_layer.activation(output_layer.product_sum, True)
     y_predicted = output_layer.outputs
     if clip:
         return (np.clip(y_prime_predicted, 1e-12, 1 - 1e-12),

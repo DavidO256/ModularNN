@@ -118,12 +118,14 @@ class Layer(abc.ABC):
         if self.last is not None:
             if len(self.last) == 0:
                 raise Exception(str(self) + " has no inputs!")
-            self.input_length = self.last[0].output_length
-            self.weights = np.random.uniform(size=(self.input_length, self.output_length))
-            self.product_sum = np.zeros(self.output_length)
+            self.on_initialization()
             for layer in self.last:
                 layer.next.append(self)
                 layer.initialize()
+
+    @abc.abstractmethod
+    def on_initialization(self):
+        pass
 
     def reset(self):
         self.inputs = None
@@ -197,8 +199,10 @@ class Dense(Layer):
         inputs = np.reshape(x, self.input_length)
         self.product_sum = np.sum(inputs * self.weights.T, axis=1)
 
-    def initialize(self):
-        super(Dense, self).initialize()
+    def on_initialization(self):
+        self.input_length = self.last[0].output_length
+        self.weights = np.random.uniform(size=(self.input_length, self.output_length))
+        self.product_sum = np.zeros(self.output_length)
         self.inputs_shape = (int(self.input_length),)
 
     def weight_value(self, input_index, output_index):
@@ -294,8 +298,7 @@ class Filter(Layer):
         return self.error[:, index % self.error.size // self.output_width,
                           index % self.error.size % self.output_height, :]
 
-    def initialize(self):
-        super(Filter, self).initialize()
+    def on_initialization(self):
         self.weights = np.random.uniform(size=(self.filters, self.size, self.size, self.output_depth))
 
     def serialize_custom(self, layer_config):
@@ -323,8 +326,7 @@ class Pooling(Layer):
         self.indices = None
         self.size = size
 
-    def forward(self, x):
-        self.outputs = np.zeros(self.outputs_shape)
+    def update_product_sums(self, x, pool=None):
         self.indices = {}
         x = np.reshape(x, self.inputs_shape)
         for i in range(self.outputs.shape[0]):
@@ -337,7 +339,6 @@ class Pooling(Layer):
                     self.indices[self.convert_index(i, j, k)] = ((i * self.size + index[0],
                                                                   j * self.size + index[1],
                                                                   k))
-        self.compute_next(self.outputs)
 
     def update_error(self, error=None, pool=None):
         self.error = np.zeros(self.inputs_shape)
@@ -353,6 +354,9 @@ class Pooling(Layer):
         for layer in self.last:
             layer.next.append(self)
             layer.initialize()
+
+    def on_initialization(self):
+        pass
 
     def gradient_value(self, i, j, update_value=None):
         if update_value is None:

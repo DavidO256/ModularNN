@@ -12,7 +12,7 @@ I felt this could be a useful example for others trying to study deep learning.
 - numpy package
 
 
-###Installation
+### Installation
 Installing packages using [pip](https://pypi.org/project/pip/).
 ```
 pip install tqdm
@@ -23,7 +23,7 @@ Cloning the repository.
 git clone https://github.com/DavidO256/ModularNN.git
 ```
 
-###Features
+### Features
 * The software is lightweight and needs very little ram.
 * Support for customizable layers, loss functions, and miscellaneous scoring functions. 
 

@@ -22,10 +22,20 @@ class Optimizer(abc.ABC):
                                                              x[batch_size * batch:batch_size * (1 + batch)],
                                                              y[batch_size * batch:batch_size * (1 + batch)],
                                                              batch, pool)
-                    progress.set_postfix({'loss': batch_loss})
+                    if batch < len(x) // batch_size - 1:
+                        progress.set_postfix({'loss': batch_loss})
+                    else:
+                        if validation is not None:
+                            validation_loss = []
+                            validation_x, validation_y = validation
+                            for sample in range(len(validation_x)):
+                                neural_network.predict(validation_x[sample])
+                                validation_loss.append(neural_network.loss(neural_network.output_layer,
+                                                                           validation_y[sample], False))
+                            progress.set_postfix({'validation_loss': np.mean(validation_loss)})
                     progress.update(1)
                 self.optimization_end()
-                progress.close()
+            progress.close()
         if pool is not None:
             pool.close()
 
